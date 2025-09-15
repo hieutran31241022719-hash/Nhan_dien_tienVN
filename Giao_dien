@@ -1,0 +1,100 @@
+!pip install gradio -q
+
+import gradio as gr
+import cv2, numpy as np
+from tensorflow.keras.models import load_model
+from PIL import Image
+
+# -----------------------------
+# Load lại mô hình ANN
+# -----------------------------
+MODEL_PATH = "/content/drive/MyDrive/money_ann_model.h5"
+model = load_model(MODEL_PATH)
+print("✅ Đã load mô hình ANN thành công!")
+
+# Thông tin class
+CLASS_NAMES = ["1k","2k","5k","10k","20k","50k","100k","200k","500k"]
+IMG_WIDTH, IMG_HEIGHT = 100, 50
+
+# Thông tin lịch sử ra đời (bạn có thể chỉnh thêm)
+history_info = {
+    "1k": """Phát hành: cotton năm 1989.
+Mặt trước: Chân dung Chủ tịch Hồ Chí Minh.
+Mặt sau: Cảnh khai thác gỗ ở Tây Nguyên.""",
+
+    "2k": """Phát hành: cotton năm 1989.
+Mặt trước: Chân dung Chủ tịch Hồ Chí Minh.
+Mặt sau: Hình ảnh công nhân tại Nhà máy Dệt Nam Định.""",
+
+    "5k": """Phát hành: cotton năm 1990,.
+Mặt trước: Chân dung Chủ tịch Hồ Chí Minh.
+Mặt sau: Nhà máy Thủy điện Trị An, trên sông Đồng Nai.""",
+
+    "10k": """Phát hành: cotton trước 2006, polymer từ 2006.
+Mặt trước: Chân dung Chủ tịch Hồ Chí Minh.
+Mặt sau: Mỏ dầu Bạch Hổ.""",
+
+    "20k": """Phát hành: cotton trước 2006, polymer từ 2006.
+Mặt trước: Chân dung Chủ tịch Hồ Chí Minh.
+Mặt sau: Chùa Cầu (Hội An, Quảng Nam).""",
+
+    "50k": """Phát hành: polymer từ 2003.
+Mặt trước: Chân dung Chủ tịch Hồ Chí Minh.
+Mặt sau: Nghênh Lương Đình – Phu Văn Lâu (Huế).""",
+
+    "100k": """Phát hành: polymer từ 2004.
+Mặt trước: Chân dung Chủ tịch Hồ Chí Minh.
+Mặt sau: Văn Miếu – Quốc Tử Giám (Hà Nội).""",
+
+    "200k": """Phát hành: polymer từ 2006.
+Mặt trước: Chân dung Chủ tịch Hồ Chí Minh.
+Mặt sau: Hòn Đỉnh Hương (Vịnh Hạ Long, Quảng Ninh).""",
+
+    "500k": """Phát hành: polymer từ 2003.
+Mặt trước: Chân dung Chủ tịch Hồ Chí Minh.
+Mặt sau: Nhà sàn Bác Hồ tại Làng Sen (Kim Liên, Nghệ An)."""
+}
+
+
+
+# -----------------------------
+# Hàm dự đoán
+# -----------------------------
+def predict_money(image):
+    # Đọc ảnh từ input Gradio
+    img = np.array(image.convert("RGB"))
+    img_resized = cv2.resize(img, (IMG_WIDTH, IMG_HEIGHT)) / 255.0
+    img_flattened = img_resized.reshape(1, -1)
+
+    # Dự đoán
+    prediction = model.predict(img_flattened)
+    idx = np.argmax(prediction)
+    confidence = np.max(prediction) * 100
+    predicted_class = CLASS_NAMES[idx]
+
+    # Lịch sử ra đời
+    history_text = history_info.get(predicted_class, "Chưa có thông tin.")
+
+    # Kết quả
+    result_text = (
+        f"💵 Mệnh giá: {predicted_class}\n"
+        f"📊 Độ tin cậy: {confidence:.2f}%\n\n"
+        f"📜 Lịch sử ra đời: {history_text}"
+    )
+    return img_resized, result_text
+
+# -----------------------------
+# Giao diện Gradio
+# -----------------------------
+demo = gr.Interface(
+    fn=predict_money,
+    inputs=gr.Image(type="pil", label="📤 Tải ảnh tiền lên"),
+    outputs=[
+        gr.Image(type="numpy", label="📷 Ảnh sau khi xử lý"),
+        gr.Textbox(label="🔎 Kết quả & Lịch sử")
+    ],
+    title="💵 Nhận diện tiền Việt Nam bằng ANN",
+    description="Upload ảnh tiền Việt Nam (1k → 500k) để phân loại mệnh giá và xem thông tin lịch sử phát hành."
+)
+
+demo.launch(debug=True)
