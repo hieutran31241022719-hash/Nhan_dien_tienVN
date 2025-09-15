@@ -1,0 +1,138 @@
+# ================================
+# 1. Kết nối Google Drive
+# ================================
+from google.colab import drive
+drive.mount('/content/drive')
+
+# ================================
+# 2. Import thư viện
+# ================================
+import os, cv2
+import numpy as np
+import matplotlib.pyplot as plt
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import LabelEncoder
+from keras.utils import to_categorical
+from keras import models, layers
+
+# ================================
+# 3. Tham số quan trọng
+# ================================
+DATA_DIR = '/content/drive/MyDrive/tien'  # đổi thành đường dẫn của bạn
+IMG_WIDTH, IMG_HEIGHT = 100, 50
+CLASS_NAMES = ["1k","2k","5k","10k","20k","50k","100k","200k","500k"]
+
+# ================================
+# 4. Hàm load dữ liệu
+# ================================
+def load_money_data(data_dir):
+    images, labels = [], []
+    class_names = [d for d in os.listdir(data_dir) if os.path.isdir(os.path.join(data_dir, d))]
+
+    # sắp xếp đúng thứ tự mệnh giá
+    def custom_sort(name):
+        return int(name.replace("k",""))
+    class_names = sorted(class_names, key=custom_sort)
+
+    print("Thứ tự class_names:", class_names)
+
+    for label_name in class_names:
+        path = os.path.join(data_dir, label_name)
+        print(f"Đang đọc dữ liệu của: {label_name}")
+        for img_file in os.listdir(path):
+            img_path = os.path.join(path, img_file)
+            try:
+                img = cv2.imread(img_path)
+                img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+                img_resized = cv2.resize(img, (IMG_WIDTH, IMG_HEIGHT))
+                images.append(img_resized)
+                labels.append(label_name)
+            except:
+                pass
+    return np.array(images), np.array(labels), class_names
+
+# ================================
+# 5. Load & tiền xử lý
+# ================================
+images, labels, class_names = load_money_data(DATA_DIR)
+print("Số ảnh:", len(images))
+print("Các lớp:", class_names)
+
+# chuẩn hóa ảnh
+images = images / 255.0
+
+# mã hóa nhãn theo số
+label_encoder = LabelEncoder()
+label_encoder.fit(class_names)
+labels_encoded = label_encoder.transform(labels)
+
+# one-hot encoding nhãn
+labels_onehot = to_categorical(labels_encoded, num_classes=len(class_names))
+
+# chia train/test
+X_train, X_test, y_train, y_test = train_test_split(
+    images, labels_onehot, test_size=0.2, random_state=42, stratify=labels_encoded
+)
+
+print("Train:", X_train.shape, "Test:", X_test.shape)
+
+# làm phẳng ảnh cho ANN
+X_train_flat = X_train.reshape(len(X_train), -1)
+X_test_flat = X_test.reshape(len(X_test), -1)
+
+# ================================
+# 6. Xây dựng mô hình ANN
+# ================================
+network = models.Sequential()
+network.add(layers.Dense(512, activation='relu', input_shape=(IMG_WIDTH * IMG_HEIGHT * 3,)))
+network.add(layers.Dense(256, activation='relu'))
+network.add(layers.Dense(128, activation='relu'))
+network.add(layers.Dense(len(class_names), activation='softmax'))
+
+network.compile(optimizer='rmsprop',
+                loss='categorical_crossentropy',
+                metrics=['accuracy'])
+
+network.summary()
+
+# ================================
+# 7. Huấn luyện
+# ================================
+history = network.fit(
+    X_train_flat, y_train,
+    epochs=20,
+    batch_size=32,
+    validation_data=(X_test_flat, y_test)
+)
+
+# ================================
+# 8. Đánh giá
+# ================================
+test_loss, test_acc = network.evaluate(X_test_flat, y_test)
+print("✅ Độ chính xác trên tập test:", test_acc)
+
+# ================================
+# 9. Lưu mô hình
+# ================================
+network.save('/content/drive/MyDrive/money_ann_model.h5')
+print("✅ Đã lưu mô hình ANN thành công!")
+
+# ================================
+# 10. Hàm dự đoán ảnh mới
+# ================================
+def predict_money(image_path):
+    img = cv2.imread(image_path)
+    img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+    img_resized = cv2.resize(img, (IMG_WIDTH, IMG_HEIGHT)) / 255.0
+    img_flat = img_resized.reshape(1, -1)
+
+    prediction = network.predict(img_flat)
+    idx = np.argmax(prediction)
+    confidence = np.max(prediction) * 100
+    predicted_class = CLASS_NAMES[idx]
+
+    plt.imshow(img_resized)
+    plt.title(f"{predicted_class} ({confidence:.2f}%)")
+    plt.axis("off")
+    plt.show()
+    return predicted_class, confidence
